@@ -24,7 +24,8 @@
                     "paginas/generos.py", "paginas/plataformas.py", "paginas/buscar.py", "paginas/chat.py"];
     const files = Object.fromEntries(codigo.map((f) => [f, { url: base + f }]));
     files["datos.db"] = { url: base + "data/catalogo_demo.db" };
-    files[".streamlit/config.toml"] = { url: base + ".streamlit/config.toml" };
+    const tema = await (await fetch(base + ".streamlit/config.toml")).text();
+    files[".streamlit/config.toml"] = { data: tema + "\n[client]\ntoolbarMode = \"viewer\"\n" };
     mount({ requirements: ["pandas", "sqlite3"], entrypoint: "app.py", files }, document.getElementById("root"));
   </script>
 </body>
