@@ -30,3 +30,7 @@ Thumbs.db
 
 # Environment variables
 .env
+
+# Claves
+secrets.toml
+!data/catalogo_demo.db

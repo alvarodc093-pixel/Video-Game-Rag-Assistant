@@ -1,133 +1,82 @@
-# VideoGame Radar - Catálogo de Videojuegos con Chat RAG
+# VideoGame Radar
 
-Proyecto de verano: un **producto de datos completo** que descarga información de
-videojuegos desde la API de [RAWG](https://rawg.io), las guarda en SQLite, las
-analiza en un notebook y las presenta en una app Streamlit con **chat RAG** para
-encontrar y descubrir videojuegos.
+Catálogo de videojuegos con datos de [RAWG](https://rawg.io): descarga los juegos en SQLite, los analiza en un notebook y los presenta en una app de Streamlit con búsqueda y un chat para pedir recomendaciones.
 
-## El problema que resuelve
+**Demo:** https://videogame-radar.vercel.app
 
-Mirando datos reales, la app responde preguntas como:
+## Qué responde
 
-- ¿Qué juegos multijugador me recomiendas?
-- ¿Cuáles son los mejores juegos de rol?
-- ¿Qué juegos están disponibles para PlayStation 5?
-- ¿Qué juegos de terror son buenos?
-- ¿Qué juegos puedo completar en un fin de semana?
-- ¿Qué géneros son más populares?
-- ¿Qué plataformas tienen más juegos?
-- ¿Cuáles son los juegos mejor valorados?
+- ¿Qué juegos de rol, terror o estrategia están mejor valorados?
+- ¿Qué juegos hay para PlayStation 5, Switch o PC?
+- ¿Qué géneros y plataformas tienen más juegos?
+- ¿Qué juegos multijugador o cooperativos me recomiendas?
 
-## Cómo ejecutarlo
+## Datos
 
-### 1. Requisitos
+`ingesta.py` descarga de la API de RAWG los géneros, las plataformas y los 1.000 juegos más populares lanzados desde el año 2000 (los más añadidos a colecciones de usuarios), con sus géneros, plataformas y etiquetas. Todo se guarda en `datos.db` y las respuestas de la API se cachean, así que repetir la ingesta no gasta peticiones.
 
-- Python 3.10+
-- Una cuenta gratis en RAWG para obtener `api_key`
-  (https://rawg.io/apidocs)
-- Opcional para el chat con IA: [Ollama](https://ollama.com) en local
+Ordenar por popularidad es deliberado: ordenar por rating trae sobre todo juegos con muy pocos votos y notas infladas.
 
-### 2. Instalar dependencias
+La base completa no se sube al repo (`datos.db` está en `.gitignore`). La demo usa `data/catalogo_demo.db`, una copia sin la tabla de caché.
+
+## Resultados
+
+Del notebook [`notebooks/eda.ipynb`](notebooks/eda.ipynb), con los datos de octubre de 2026:
+
+- **Géneros:** Action (703 juegos), Adventure (349), Indie (307) y RPG (268).
+- **Plataformas:** casi todos están en PC (971); después, Xbox One (553) y PlayStation 4 (551).
+- **Valoraciones:** rating medio de 3,73/5 y Metacritic medio de 80. Las dos notas están bastante relacionadas (correlación de 0,62).
+- **Mejor valorados** (con 100 votos o más): Persona 5 Royal, The Last of Us Remastered y The Witcher 3.
+- **Sesgo temporal:** casi no hay juegos de 2023 en adelante, porque los recientes aún no acumulan tantos usuarios en RAWG.
+
+## La app
+
+| Sección | Contenido |
+|---|---|
+| Visión general | KPIs, géneros y plataformas principales, top 10 |
+| Catálogo | Juegos filtrados por género y plataforma |
+| Géneros / Plataformas | Juegos y valoración media por género y por plataforma |
+| Búsqueda | Por nombre, género, plataforma o etiqueta, con rating y Metacritic mínimos |
+| Chat | Recomendaciones a partir de los juegos del catálogo |
+
+### Chat
+
+En local, `preparar_corpus.py` indexa una ficha por juego en ChromaDB y el chat recupera las más parecidas a la pregunta. Si hay un modelo de Ollama configurado en `secrets.toml`, redacta la respuesta con esos juegos como contexto; si no, muestra los juegos recuperados.
+
+En la demo web no hay Chroma ni LLM: el chat traduce la pregunta a géneros, etiquetas y plataformas de RAWG ("terror" → Horror, "PS5" → PlayStation 5...) y busca con SQL.
+
+## Ejecutarlo en local
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # Linux/macOS
 pip install -r requirements.txt
-```
-
-### 3. Configurar las claves
-
-Copia `secrets_ejemplo.toml` como `secrets.toml` y rellena tus claves:
-
-```toml
-[rawg]
-api_key = "TU_API_KEY"
-
-[ollama]
-base_url = "http://localhost:11434/v1"
-model = "llama3"
-```
-
-`secrets.toml` está en `.gitignore`: nunca lo subas a GitHub.
-
-### 4. Descargar los datos (ingesta)
-
-```bash
-python ingesta.py            # descarga lo que falte (cachea en datos.db)
-python ingesta.py --force    # ignora el cache y vuelve a pedirlo todo
-python ingesta.py --dry-run  # muestra las consultas sin llamar a la API
-python ingesta.py --juegos 1000  # descarga 1000 juegos
-```
-
-La ingesta hace peticiones a RAWG y las cachea en la tabla `api_cache`.
-Re-ejecutar el script **no gasta peticiones nuevas**: solo descarga lo que
-falte.
-
-### 5. EDA
-
-```bash
-jupyter notebook notebooks/eda.ipynb
-```
-
-O desde VS Code abriendo `notebooks/eda.ipynb`.
-
-### 6. Indexar el corpus para el chat
-
-```bash
-python preparar_corpus.py            # indexa los juegos en Chroma
-python preparar_corpus.py --borrar   # reindexa desde cero
-```
-
-### 7. Lanzar la app
-
-```bash
+copy secrets_ejemplo.toml secrets.toml   # y añade tu API key de RAWG
+python ingesta.py --juegos 1000          # por defecto descarga 500
+python preparar_corpus.py
 streamlit run app.py
 ```
 
-## Estructura del repositorio
+La API key es gratuita en https://rawg.io/apidocs. También puede pasarse con la variable de entorno `RAWG_API_KEY`. La ingesta borra la key de las respuestas antes de guardarlas en la caché.
 
-```
-VideoGameRadar/
-├── README.md                este archivo
-├── requirements.txt
-├── .gitignore
-├── secrets_ejemplo.toml     plantilla de claves (sin valores reales)
-├── ingesta.py               API de RAWG -> SQLite (con cache)
-├── preparar_corpus.py       juegos -> Chroma (corpus del chat)
-├── consultas.py             acceso a datos para app y EDA
-├── datos.db                 la base SQLite (se genera al ejecutar ingesta)
-├── diccionario_datos.md     documentación de columnas y tablas
-├── notebooks/
-│   └── eda.ipynb            análisis exploratorio con conclusiones
-└── paginas/
-    ├── vision.py            KPIs y contexto
-    ├── catalogo.py          explorador de videojuegos con filtros
-    ├── generos.py           análisis por géneros
-    ├── plataformas.py       análisis por plataformas
-    ├── buscar.py            búsqueda avanzada
-    └── chat.py              chat RAG (Chroma + Ollama)
+## Estructura
+
+```text
+├── app.py                  # Entrada de la app de Streamlit
+├── index.html              # Demo web (stlite)
+├── ingesta.py              # API de RAWG → SQLite (con caché)
+├── preparar_corpus.py      # Juegos → ChromaDB
+├── consultas.py            # Consultas SQL compartidas
+├── paginas/                # Una página por sección
+├── data/catalogo_demo.db   # Base de la demo
+├── notebooks/eda.ipynb     # Análisis exploratorio
+└── diccionario_datos.md
 ```
 
-## API Utilizada
+## Tecnologías
 
-### RAWG API
+Python, SQLite, Pandas, Streamlit, ChromaDB, Ollama (opcional), Matplotlib y Seaborn.
 
-- **URL**: https://rawg.io/apidocs
-- **Datos**: +350,000 videojuegos
-- **Información**: nombres, descripciones, géneros, plataformas, calificaciones, imágenes
-- **Límites**: Gratis para uso no comercial (<100k usuarios/mes)
+Datos de videojuegos e imágenes: [RAWG](https://rawg.io).
 
-## Notas y limitaciones
+## Autor
 
-- **RAWG API**: tiene límites de peticiones en el plan gratuito.
-- **Calificaciones**: no todos los juegos tienen Metacritic.
-- **Imágenes**: dependen de RAWG, pueden no estar disponibles para todos.
-- **Modelo de embeddings**: Chroma descarga automáticamente un modelo de embeddings
-  la primera vez que se indexa.
-- **Despliegue en Streamlit Cloud**: la parte de datos funciona; el chat usa
-  Ollama local para embeddings/generación, que no existe en la nube.
-
-## Licencia y créditos
-
-Datos de videojuegos: [RAWG API](https://rawg.io). Uso académico.
+Álvaro Domingo Cordón · [LinkedIn](https://www.linkedin.com/in/alvaro-domingo/) · [GitHub](https://github.com/alvarodc093-pixel)

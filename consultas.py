@@ -56,8 +56,8 @@ def plataformas_principales(limite: int = 10) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def juegos_top(limite: int = 10) -> list[dict]:
-    """Retorna los juegos mejor valorados."""
+def juegos_top(limite: int = 10, min_votos: int = 100) -> list[dict]:
+    """Retorna los juegos mejor valorados con al menos min_votos valoraciones."""
     conn = get_connection()
     query = """
         SELECT j.nombre, j.rating, j.metacritic, j.fecha_lanzamiento,
@@ -65,12 +65,12 @@ def juegos_top(limite: int = 10) -> list[dict]:
         FROM juegos j
         LEFT JOIN juego_generos jg ON j.id = jg.juego_id
         LEFT JOIN generos g ON jg.genero_id = g.id
-        WHERE j.rating IS NOT NULL
+        WHERE j.rating IS NOT NULL AND j.ratings_count >= ?
         GROUP BY j.id
         ORDER BY j.rating DESC
         LIMIT ?
     """
-    rows = conn.execute(query, (limite,)).fetchall()
+    rows = conn.execute(query, (min_votos, limite)).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
@@ -151,7 +151,7 @@ def juegos_por_plataforma(plataforma_slug: str) -> list[dict]:
 def estadisticas_generales() -> dict:
     """Retorna estadísticas generales de la base de datos."""
     conn = get_connection()
-    
+
     stats = {
         "total_juegos": conn.execute("SELECT COUNT(*) FROM juegos").fetchone()[0],
         "total_generos": conn.execute("SELECT COUNT(*) FROM generos").fetchone()[0],
@@ -159,7 +159,7 @@ def estadisticas_generales() -> dict:
         "rating_promedio": conn.execute("SELECT AVG(rating) FROM juegos WHERE rating IS NOT NULL").fetchone()[0],
         "metacritic_promedio": conn.execute("SELECT AVG(metacritic) FROM juegos WHERE metacritic IS NOT NULL").fetchone()[0],
     }
-    
+
     conn.close()
     return stats
 
@@ -168,7 +168,7 @@ def datos_para_eda() -> list[dict]:
     """Retorna todos los juegos para análisis exploratorio."""
     conn = get_connection()
     query = """
-        SELECT 
+        SELECT
             j.*,
             GROUP_CONCAT(DISTINCT g.nombre) as generos,
             GROUP_CONCAT(DISTINCT p.nombre) as plataformas

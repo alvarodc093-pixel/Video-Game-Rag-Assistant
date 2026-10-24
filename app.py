@@ -45,7 +45,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.divider()
-    st.caption("Datos: API de RAWG · Streamlit + Chroma")
+    st.caption("Datos: [RAWG](https://rawg.io) · Streamlit + Chroma")
 
 if HEADER.exists():
     st.image(str(HEADER), width="stretch")

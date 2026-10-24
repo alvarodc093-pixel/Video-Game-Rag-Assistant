@@ -14,6 +14,7 @@ Almacena la información principal de cada videojuego.
 | fecha_lanzamiento | TEXT | Fecha de lanzamiento (YYYY-MM-DD) |
 | rating | REAL | Calificación de usuarios (0-5) |
 | rating_top | INTEGER | Calificación más alta recibida |
+| ratings_count | INTEGER | Número de valoraciones de usuarios en RAWG |
 | metacritic | INTEGER | Puntuación de Metacritic (0-100) |
 | playtime | INTEGER | Tiempo promedio de juego en horas |
 | background_image | TEXT | URL de la imagen principal |

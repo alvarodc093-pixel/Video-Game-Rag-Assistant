@@ -11,9 +11,16 @@ import os
 import tomllib
 from pathlib import Path
 
-import chromadb
 import streamlit as st
-from openai import OpenAI
+
+from consultas import get_connection
+
+try:
+    import chromadb
+    from openai import OpenAI
+except ImportError:  # demo web (stlite): sin Chroma ni cliente de LLM
+    chromadb = None
+    OpenAI = None
 
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chroma_db")
 COLLECTION = "videojuegos"
@@ -39,11 +46,11 @@ SUGERENCIAS = {
         "¿Cuáles son los mejores juegos de rol?"),
     ":orange[:material/whatshot:] Busca juegos de acción para PS5": (
         "Busca juegos de acción disponibles para PlayStation 5"),
-    ":purple[:material/emoji_emotions:] Juegos casuales para jugar en familia": (
+    ":violet[:material/emoji_emotions:] Juegos casuales para jugar en familia": (
         "Recomiéndame juegos casuales para jugar en familia"),
     ":red[:material/visibility_off:] Juegos de terror populares": (
         "¿Cuáles son los juegos de terror más populares?"),
-    ":cyan[:material/schedule:] Juegos cortos para completar en un fin de semana": (
+    ":gray[:material/schedule:] Juegos cortos para completar en un fin de semana": (
         "¿Qué juegos puedo completar en un fin de semana?"),
 }
 
@@ -55,7 +62,9 @@ def obtener_coleccion():
 
 
 @st.cache_resource
-def obtener_cliente_llm() -> tuple[OpenAI | None, str]:
+def obtener_cliente_llm():
+    if OpenAI is None:
+        return None, ""
     cfg = _config_ollama()
     base_url = cfg.get("base_url")
     model = cfg.get("model")
@@ -68,8 +77,60 @@ def obtener_cliente_llm() -> tuple[OpenAI | None, str]:
         return None, ""
 
 
+# Palabras de la pregunta (en español) -> género o tag de RAWG, para el modo sin Chroma.
+TERMINOS = {
+    "multijugador": "Multiplayer", "cooperativ": "Co-op", "acción": "Action",
+    "accion": "Action", "rol": "RPG", "terror": "Horror", "casual": "Casual",
+    "familia": "Family", "estrategia": "Strategy", "aventura": "Adventure",
+    "shooter": "Shooter", "deporte": "Sports", "carreras": "Racing",
+    "puzle": "Puzzle", "plataformas": "Platformer", "indie": "Indie",
+    "mundo abierto": "Open World", "playstation 5": "PlayStation 5",
+    "ps5": "PlayStation 5", "xbox": "Xbox", "switch": "Nintendo Switch", "pc": "PC",
+}
+
+
+def recuperar_sql(pregunta: str, k: int) -> list[dict]:
+    """Sin Chroma: filtra por los géneros, tags y plataformas que nombra la pregunta."""
+    p = pregunta.lower()
+    terminos = [v for clave, v in TERMINOS.items() if clave in p]
+    corto = any(x in p for x in ("fin de semana", "corto", "cortos", "poco tiempo"))
+    condiciones, params = [], []
+    for t in terminos:
+        condiciones.append("""(EXISTS (SELECT 1 FROM juego_generos jg JOIN generos g ON g.id = jg.genero_id
+                                       WHERE jg.juego_id = j.id AND g.nombre LIKE ?)
+                             OR EXISTS (SELECT 1 FROM juego_tags jt JOIN tags t ON t.id = jt.tag_id
+                                       WHERE jt.juego_id = j.id AND t.nombre LIKE ?)
+                             OR EXISTS (SELECT 1 FROM juego_plataformas jp JOIN plataformas pl ON pl.id = jp.plataforma_id
+                                       WHERE jp.juego_id = j.id AND pl.nombre LIKE ?))""")
+        params += [f"%{t}%"] * 3
+    if corto:
+        condiciones.append("j.playtime BETWEEN 1 AND 10")
+    where = " AND ".join(condiciones) or "1=1"
+    conn = get_connection()
+    filas = conn.execute(f"""
+        SELECT j.nombre, j.rating, j.metacritic, j.playtime, j.fecha_lanzamiento,
+               (SELECT GROUP_CONCAT(g.nombre, ', ') FROM juego_generos jg JOIN generos g ON g.id = jg.genero_id
+                WHERE jg.juego_id = j.id) AS generos,
+               (SELECT GROUP_CONCAT(pl.nombre, ', ') FROM juego_plataformas jp JOIN plataformas pl ON pl.id = jp.plataforma_id
+                WHERE jp.juego_id = j.id) AS plataformas
+        FROM juegos j WHERE {where}
+        ORDER BY j.rating DESC LIMIT ?""", params + [k]).fetchall()
+    conn.close()
+    resultados = []
+    for f in filas:
+        doc = (f"JUEGO: {f['nombre']}\nGÉNEROS: {f['generos']}\nPLATAFORMAS: {f['plataformas']}\n"
+               f"TIEMPO PROMEDIO: {f['playtime']} horas")
+        resultados.append({"documento": doc, "metadatos": {
+            "nombre": f["nombre"], "generos": f["generos"], "plataformas": f["plataformas"],
+            "rating": f["rating"], "metacritic": f["metacritic"],
+            "fecha_lanzamiento": f["fecha_lanzamiento"]}})
+    return resultados
+
+
 def recuperar(coleccion, pregunta: str, k: int) -> list[dict]:
-    """Busca los k juegos más relevantes en Chroma."""
+    """Busca los k juegos más relevantes en Chroma (o con SQL si no hay Chroma)."""
+    if coleccion is None:
+        return recuperar_sql(pregunta, k)
     try:
         resultados = coleccion.query(
             query_texts=[pregunta], n_results=k, include=["documents", "metadatas"]
@@ -93,7 +154,7 @@ def formato_contexto(resultados: list[dict]) -> str:
         rating = m.get("rating", "N/A")
         metacritic = m.get("metacritic", "N/A")
         fecha = m.get("fecha_lanzamiento", "N/A")
-        
+
         lineas.append(
             f"[{i}] {nombre}\n"
             f"    Géneros: {generos}\n"
@@ -111,8 +172,8 @@ def generar_respuesta(pregunta: str, contexto: str,
     cliente, model = obtener_cliente_llm()
     if not cliente:
         return (
-            "Solo tengo datos (Ollama no está conectado). Respuesta basada en "
-            f"los juegos recuperados:\n\n{contexto[:2000]}"
+            "Sin un LLM conectado no redacto la respuesta, pero estos son los "
+            f"juegos que mejor encajan con tu pregunta:\n\n{contexto[:2000]}"
         )
 
     system = (
@@ -141,7 +202,7 @@ def generar_respuesta(pregunta: str, contexto: str,
 
 def pagina():
     st.title("Chat con tu asistente gamer")
-    
+
     st.caption(
         "Pregunta sobre videojuegos, géneros, plataformas o pide recomendaciones. "
         "El chat recupera los juegos más relevantes de Chroma y los usa como contexto. "
@@ -158,19 +219,22 @@ def pagina():
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    try:
-        coleccion = obtener_coleccion()
-    except Exception:
-        st.warning(
-            "No hay colección Chroma. Ejecuta primero: "
-            "`python preparar_corpus.py`"
-        )
-        coleccion = None
+    coleccion = None
+    if chromadb is None:
+        st.info("Versión web: el chat busca con SQL por género, etiqueta y plataforma "
+                "(sin búsqueda semántica ni LLM).")
+    else:
+        try:
+            coleccion = obtener_coleccion()
+        except Exception:
+            st.info("No hay colección Chroma (`python preparar_corpus.py`); "
+                    "el chat busca con SQL por género, etiqueta y plataforma.")
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
+    sugerencia = None
     if not st.session_state.messages:
         seleccion = st.pills(
             "Prueba a preguntar:",
@@ -178,13 +242,11 @@ def pagina():
             label_visibility="collapsed",
         )
         if seleccion:
-            prompt = SUGERENCIAS[seleccion]
-            st.session_state.messages.append(
-                {"role": "user", "content": prompt})
-            st.rerun()
+            sugerencia = SUGERENCIAS[seleccion]
 
+    # Una sugerencia pulsada sigue el mismo camino que una pregunta escrita.
     prompt = st.chat_input(
-        "Pregunta sobre videojuegos...", submit_mode="disable")
+        "Pregunta sobre videojuegos...", submit_mode="disable") or sugerencia
 
     if prompt:
         st.session_state.messages.append(
@@ -193,25 +255,18 @@ def pagina():
             st.write(prompt)
 
         with st.chat_message("assistant"):
-            if coleccion is None:
-                st.write("No hay datos indexados todavía.")
+            resultados = recuperar(coleccion, prompt, k)
+            if not resultados:
+                respuesta = ("No he encontrado juegos relacionados. Prueba a "
+                             "preguntar sobre géneros, plataformas o títulos específicos.")
             else:
-                resultados = recuperar(coleccion, prompt, k)
-                if not resultados:
-                    st.write(
-                        "No he encontrado juegos relacionados. Prueba a "
-                        "preguntar sobre géneros, plataformas o títulos específicos.")
-                else:
-                    contexto = formato_contexto(resultados)
-                    respuesta = generar_respuesta(
-                        prompt, contexto, st.session_state.messages[:-1])
-                    if isinstance(respuesta, str):
-                        st.write(respuesta)
-                        st.session_state.messages.append(
-                            {"role": "assistant", "content": respuesta})
-                    else:
-                        texto = st.write_stream(respuesta)
-                        st.session_state.messages.append(
-                            {"role": "assistant", "content": texto})
+                respuesta = generar_respuesta(
+                    prompt, formato_contexto(resultados), st.session_state.messages[:-1])
+            if isinstance(respuesta, str):
+                st.write(respuesta)
+            else:
+                respuesta = st.write_stream(respuesta)
+            st.session_state.messages.append(
+                {"role": "assistant", "content": respuesta})
 
         st.rerun()

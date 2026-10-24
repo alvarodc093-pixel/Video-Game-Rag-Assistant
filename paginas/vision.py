@@ -14,9 +14,9 @@ from consultas import (
 def pagina():
     st.title("VideoGame Radar")
     st.subheader("Tu guía para descubrir videojuegos")
-    
+
     stats = estadisticas_generales()
-    
+
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Juegos", f"{stats['total_juegos']:,}")
@@ -27,27 +27,27 @@ def pagina():
     with col4:
         rating = stats.get('rating_promedio', 0) or 0
         st.metric("Rating Promedio", f"{rating:.1f}/5")
-    
+
     st.divider()
-    
+
     col_izq, col_der = st.columns(2)
-    
+
     with col_izq:
         st.subheader("Géneros principales")
         generos = generos_principales(8)
         if generos:
             df_gen = pd.DataFrame(generos)
             st.bar_chart(df_gen.set_index("nombre")["total"])
-    
+
     with col_der:
         st.subheader("Plataformas principales")
         plataformas = plataformas_principales(8)
         if plataformas:
             df_plat = pd.DataFrame(plataformas)
             st.bar_chart(df_plat.set_index("nombre")["total"])
-    
+
     st.divider()
-    
+
     st.subheader("Top 10 juegos mejor valorados")
     top_juegos = juegos_top(10)
     if top_juegos:
