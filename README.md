@@ -1,8 +1,17 @@
 # VideoGame Radar
 
-Catálogo de videojuegos con datos de [RAWG](https://rawg.io): descarga los juegos en SQLite, los analiza en un notebook y los presenta en una app de Streamlit con búsqueda y un chat para pedir recomendaciones.
+**Catálogo de los 1.000 juegos más populares de RAWG con búsqueda por género, plataforma o etiqueta y un chat para pedir recomendaciones.**
 
-**Demo:** https://videogame-radar.vercel.app
+[![Demo](https://img.shields.io/badge/Demo-en%20vivo-2ea44f?style=flat-square)](https://videogame-radar.vercel.app) ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-datos-003B57?style=flat-square&logo=sqlite&logoColor=white) ![Streamlit](https://img.shields.io/badge/Streamlit-app-FF4B4B?style=flat-square&logo=streamlit&logoColor=white) ![ChromaDB](https://img.shields.io/badge/ChromaDB-RAG-5A3FC0?style=flat-square)
+
+![Visión general de VideoGame Radar](docs/img/vision.png)
+
+## En resumen
+
+- **Problema:** con decenas de miles de juegos publicados, encontrar uno según género, plataforma o valoración es abrumador.
+- **Datos:** 1.000 juegos de la API de RAWG con géneros, plataformas, 1.287 etiquetas y valoraciones, en SQLite.
+- **Resultado:** Action domina el catálogo (703 juegos) y la nota de usuarios y la de Metacritic están bastante relacionadas (correlación de 0,62).
+- **App:** Streamlit con catálogo, análisis por género y plataforma, búsqueda y un chat que recupera juegos con ChromaDB y redacta con un LLM local.
 
 ## Qué responde
 
@@ -30,6 +39,8 @@ Del notebook [`notebooks/eda.ipynb`](notebooks/eda.ipynb), con los datos de octu
 - **Sesgo temporal:** casi no hay juegos de 2023 en adelante, porque los recientes aún no acumulan tantos usuarios en RAWG.
 
 ## La app
+
+![Búsqueda de juegos de terror](docs/img/busqueda.png)
 
 | Sección | Contenido |
 |---|---|
